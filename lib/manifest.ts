@@ -58,6 +58,43 @@ export async function readManifest(): Promise<Song[]> {
   }
 }
 
+export async function syncManifestWithMusicDir() {
+  await ensureManifestExists();
+
+  const existing = await readManifest();
+  const entries = await fs.readdir(MUSIC_DIR);
+  const lowerNameMap = new Map(entries.map((name) => [name.toLowerCase(), name]));
+  const audioFiles = entries
+    .filter((name) => AUDIO_EXTENSIONS.has(path.extname(name).toLowerCase()))
+    .sort((a, b) => a.localeCompare(b));
+  const existingByFile = new Set(existing.map((song) => song.file.toLowerCase()));
+
+  const withNewSongs = [...existing];
+  let added = 0;
+
+  for (const fileName of audioFiles) {
+    if (existingByFile.has(fileName.toLowerCase())) {
+      continue;
+    }
+
+    withNewSongs.push(await buildSongFromFile(fileName, lowerNameMap));
+    existingByFile.add(fileName.toLowerCase());
+    added += 1;
+  }
+
+  const { songs: enriched, changed } = await enrichExistingSongs(withNewSongs, lowerNameMap);
+
+  if (added > 0 || changed) {
+    await fs.writeFile(MANIFEST_PATH, `${JSON.stringify(enriched, null, 2)}\n`, "utf8");
+  }
+
+  return {
+    added,
+    updated: changed,
+    total: enriched.length
+  };
+}
+
 export async function appendSongToManifest(song: Song) {
   const songs = await readManifest();
   songs.push(song);
@@ -99,25 +136,14 @@ async function discoverSongsFromMusicDir(): Promise<Song[]> {
   const songs: Song[] = [];
 
   for (const fileName of audioFiles) {
-    const ext = path.extname(fileName);
-    const base = path.basename(fileName, ext);
-    const externalArtwork = findArtworkForBase(base, lowerNameMap);
-    const extracted = await extractAudioMetadata(fileName);
-
-    songs.push({
-      id: `song-${createHash("sha1").update(fileName).digest("hex").slice(0, 12)}`,
-      file: fileName,
-      title: extracted.title || humanizeTitle(base),
-      artist: extracted.artist || UNKNOWN_ARTIST,
-      album: extracted.album || UNKNOWN_ALBUM,
-      artwork: externalArtwork || extracted.artwork
-    });
+    songs.push(await buildSongFromFile(fileName, lowerNameMap));
   }
 
   return songs;
 }
 
-async function enrichExistingSongs(existing: Song[]) {
+async function enrichExistingSongs(existing: Song[], lowerNameMap?: Map<string, string>) {
+  const artworkMap = lowerNameMap ?? new Map((await fs.readdir(MUSIC_DIR)).map((name) => [name.toLowerCase(), name]));
   let changed = false;
   const songs: Song[] = [];
 
@@ -135,6 +161,7 @@ async function enrichExistingSongs(existing: Song[]) {
 
     const ext = path.extname(song.file);
     const base = path.basename(song.file, ext);
+    const externalArtwork = findArtworkForBase(base, artworkMap);
     const fileMetadata = await extractAudioMetadata(song.file);
 
     const next: Song = {
@@ -144,7 +171,7 @@ async function enrichExistingSongs(existing: Song[]) {
         ? fileMetadata.artist || UNKNOWN_ARTIST
         : song.artist,
       album: isUnknown(song.album, UNKNOWN_ALBUM) ? fileMetadata.album || UNKNOWN_ALBUM : song.album,
-      artwork: song.artwork || fileMetadata.artwork
+      artwork: song.artwork || externalArtwork || fileMetadata.artwork
     };
 
     if (
@@ -160,6 +187,22 @@ async function enrichExistingSongs(existing: Song[]) {
   }
 
   return { songs, changed };
+}
+
+async function buildSongFromFile(fileName: string, lowerNameMap: Map<string, string>) {
+  const ext = path.extname(fileName);
+  const base = path.basename(fileName, ext);
+  const externalArtwork = findArtworkForBase(base, lowerNameMap);
+  const extracted = await extractAudioMetadata(fileName);
+
+  return {
+    id: `song-${createHash("sha1").update(fileName).digest("hex").slice(0, 12)}`,
+    file: fileName,
+    title: extracted.title || humanizeTitle(base),
+    artist: extracted.artist || UNKNOWN_ARTIST,
+    album: extracted.album || UNKNOWN_ALBUM,
+    artwork: externalArtwork || extracted.artwork
+  } satisfies Song;
 }
 
 function findArtworkForBase(base: string, names: Map<string, string>) {

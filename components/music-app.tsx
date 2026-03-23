@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Song } from "@/lib/types";
 
 type SongWithUrls = Song & {
@@ -31,6 +31,8 @@ export default function MusicApp() {
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [brokenArtwork, setBrokenArtwork] = useState<Set<string>>(new Set());
+  const [reloadPending, setReloadPending] = useState(false);
+  const [reloadMessage, setReloadMessage] = useState("");
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -42,33 +44,64 @@ export default function MusicApp() {
     return () => window.clearTimeout(timer);
   }, [query]);
 
-  useEffect(() => {
-    const fetchSongs = async () => {
-      setLoading(true);
-      try {
-        const response = await fetch("/api/songs", { cache: "no-store" });
-        const data = (await response.json()) as Song[];
+  const fetchSongs = useCallback(async () => {
+    setLoading(true);
+    try {
+      const response = await fetch("/api/songs", { cache: "no-store" });
+      const data = (await response.json()) as Song[];
 
-        const normalized = data.map((song) => ({
-          ...song,
-          audioUrl: `/music/${song.file}`,
-          artworkUrl: song.artwork ? `/music/${song.artwork}` : null
-        }));
+      const normalized = data.map((song) => ({
+        ...song,
+        audioUrl: `/music/${song.file}`,
+        artworkUrl: song.artwork ? `/music/${song.artwork}` : null
+      }));
 
-        setSongs(normalized);
+      setSongs(normalized);
 
-        if (normalized.length > 0) {
-          setCurrentSongId((prev) => prev ?? normalized[0].id);
-        }
-      } catch {
-        setSongs([]);
-      } finally {
-        setLoading(false);
+      if (normalized.length > 0) {
+        setCurrentSongId((prev) => {
+          if (prev && normalized.some((song) => song.id === prev)) {
+            return prev;
+          }
+          return normalized[0].id;
+        });
+      } else {
+        setCurrentSongId(null);
       }
-    };
-
-    void fetchSongs();
+    } catch {
+      setSongs([]);
+      setCurrentSongId(null);
+    } finally {
+      setLoading(false);
+    }
   }, []);
+
+  useEffect(() => {
+    void fetchSongs();
+  }, [fetchSongs]);
+
+  async function reloadLibrary() {
+    setReloadPending(true);
+    setReloadMessage("");
+
+    try {
+      const response = await fetch("/api/reload", { method: "POST" });
+      const payload = (await response.json()) as { added?: number; updated?: boolean; total?: number };
+
+      if (!response.ok) {
+        throw new Error("Reload failed");
+      }
+
+      await fetchSongs();
+      const added = payload.added ?? 0;
+      const updated = payload.updated ? "metadata refreshed" : "no metadata changes";
+      setReloadMessage(`Reloaded: ${added} added, ${updated}.`);
+    } catch {
+      setReloadMessage("Reload failed.");
+    } finally {
+      setReloadPending(false);
+    }
+  }
 
   const filteredSongs = useMemo(() => {
     if (!debouncedQuery) {
@@ -196,13 +229,19 @@ export default function MusicApp() {
       <audio ref={audioRef} preload="metadata" />
 
       <header className="top-bar">
-        <input
-          type="search"
-          placeholder="Search by title, artist, or album"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          aria-label="Search songs"
-        />
+        <div className="top-controls">
+          <input
+            type="search"
+            placeholder="Search by title, artist, or album"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            aria-label="Search songs"
+          />
+          <button type="button" className="reload-button" onClick={() => void reloadLibrary()} disabled={reloadPending}>
+            {reloadPending ? "Reloading..." : "Reload"}
+          </button>
+        </div>
+        {reloadMessage ? <p className="top-status">{reloadMessage}</p> : null}
       </header>
 
       <section className="song-list" aria-live="polite">

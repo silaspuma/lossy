@@ -44,16 +44,44 @@ input {
   padding: 14px 16px;
 }
 
-.top-bar input {
+.top-controls {
   width: 100%;
   max-width: 920px;
-  display: block;
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
   margin: 0 auto;
+}
+
+.top-bar input {
+  width: 100%;
+  display: block;
   border: 1px solid var(--line);
   background: #fff;
   border-radius: 8px;
   padding: 10px 12px;
   outline: none;
+}
+
+.reload-button {
+  border: 1px solid #d6d6d6;
+  border-radius: 8px;
+  background: #fff;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.reload-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.top-status {
+  width: 100%;
+  max-width: 920px;
+  margin: 6px auto 0;
+  color: var(--muted);
+  font-size: 12px;
 }
 
 .top-bar input:focus {
@@ -272,5 +300,9 @@ input {
 
   .now-playing {
     grid-template-columns: auto 1fr auto;
+  }
+
+  .top-controls {
+    grid-template-columns: 1fr;
   }
 }
