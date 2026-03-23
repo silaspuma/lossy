@@ -38,7 +38,7 @@ cp .env.example .env.local
 
 Required variables:
 
-- `SPACES_ENDPOINT` example: `nyc3.digitaloceanspaces.com`
+- `SPACES_ENDPOINT` example: `nyc3.digitaloceanspaces.com` (do not include bucket name)
 - `SPACES_REGION` usually `us-east-1` for Spaces SDK compatibility
 - `SPACES_BUCKET` your Space name
 - `SPACES_KEY` Spaces access key
@@ -46,7 +46,7 @@ Required variables:
 
 Optional variables:
 
-- `SPACES_BASE_PREFIX=all music`
+- `SPACES_BASE_PREFIX="all music"`
 - `SPACES_USE_SIGNED_URLS=true|false`
 - `SPACES_SIGNED_URL_EXPIRES_SECONDS=900`
 - `SPACES_UPLOAD_PUBLIC_READ=true|false`

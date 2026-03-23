@@ -1,4 +1,4 @@
-import { S3Client, GetObjectCommand, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client, GetObjectCommand, PutObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
 
 function getEnv(name: string) {
@@ -55,10 +55,19 @@ export function getSpacesEndpointHost() {
   return endpoint.replace(/^https?:\/\//, "").replace(/\/$/, "");
 }
 
+function endpointAlreadyIncludesBucket(endpointHost: string, bucket: string) {
+  return endpointHost.toLowerCase().startsWith(`${bucket.toLowerCase()}.`);
+}
+
 export function getSpacesClient() {
+  const endpoint = normalizeEndpoint(getEnv("SPACES_ENDPOINT"));
+  const bucket = getSpacesBucket();
+  const endpointHost = endpoint.replace(/^https?:\/\//, "").replace(/\/$/, "");
+
   return new S3Client({
-    endpoint: normalizeEndpoint(getEnv("SPACES_ENDPOINT")),
+    endpoint,
     region: process.env.SPACES_REGION || "us-east-1",
+    forcePathStyle: endpointAlreadyIncludesBucket(endpointHost, bucket),
     credentials: {
       accessKeyId: getEnv("SPACES_KEY"),
       secretAccessKey: getEnv("SPACES_SECRET")
@@ -69,6 +78,9 @@ export function getSpacesClient() {
 export function getObjectUrl(key: string) {
   const bucket = getSpacesBucket();
   const endpointHost = getSpacesEndpointHost();
+  if (endpointAlreadyIncludesBucket(endpointHost, bucket)) {
+    return `https://${endpointHost}/${encodeURI(key)}`;
+  }
   return `https://${bucket}.${endpointHost}/${encodeURI(key)}`;
 }
 
@@ -106,4 +118,33 @@ export async function getPlaybackUrl(input: { key?: string; fallbackUrl: string 
   );
 
   return signed;
+}
+
+export async function listObjectsInSpacesPrefix() {
+  const client = getSpacesClient();
+  const bucket = getSpacesBucket();
+  const prefix = getSpacesBasePrefix();
+
+  const keys: string[] = [];
+  let continuationToken: string | undefined;
+
+  do {
+    const response = await client.send(
+      new ListObjectsV2Command({
+        Bucket: bucket,
+        Prefix: prefix ? `${prefix}/` : undefined,
+        ContinuationToken: continuationToken
+      })
+    );
+
+    for (const item of response.Contents ?? []) {
+      if (item.Key) {
+        keys.push(item.Key);
+      }
+    }
+
+    continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
+  } while (continuationToken);
+
+  return keys;
 }
