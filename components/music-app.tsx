@@ -48,7 +48,15 @@ export default function MusicApp() {
     setLoading(true);
     try {
       const response = await fetch("/api/songs", { cache: "no-store" });
-      const data = (await response.json()) as Song[];
+      const payload = (await response.json()) as Song[] | { error?: string };
+
+      if (!response.ok) {
+        const message = "error" in payload ? payload.error || "Failed to load songs" : "Failed to load songs";
+        console.error("[client:songs] failed", { status: response.status, message, payload });
+        throw new Error(message);
+      }
+
+      const data = payload as Song[];
 
       const normalized = data.map((song) => ({
         ...song,
@@ -68,7 +76,8 @@ export default function MusicApp() {
       } else {
         setCurrentSongId(null);
       }
-    } catch {
+    } catch (error) {
+      console.error("[client:songs] error", error);
       setSongs([]);
       setCurrentSongId(null);
     } finally {
@@ -86,15 +95,18 @@ export default function MusicApp() {
 
     try {
       const response = await fetch("/api/reload", { method: "POST" });
-      const payload = (await response.json()) as { total?: number };
+      const payload = (await response.json()) as { total?: number; error?: string };
 
       if (!response.ok) {
-        throw new Error("Reload failed");
+        const message = payload.error || "Reload failed";
+        console.error("[client:reload] failed", { status: response.status, message, payload });
+        throw new Error(message);
       }
 
       await fetchSongs();
       setReloadMessage(`Reloaded. Total songs: ${payload.total ?? 0}.`);
-    } catch {
+    } catch (error) {
+      console.error("[client:reload] error", error);
       setReloadMessage("Reload failed.");
     } finally {
       setReloadPending(false);

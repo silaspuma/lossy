@@ -121,6 +121,8 @@ export async function getPlaybackUrl(input: { key?: string; fallbackUrl: string 
 }
 
 export async function listObjectsInSpacesPrefix() {
+  console.log("[spaces:list] start", getSpacesDebugContext());
+
   const client = getSpacesClient();
   const bucket = getSpacesBucket();
   const prefix = getSpacesBasePrefix();
@@ -146,5 +148,24 @@ export async function listObjectsInSpacesPrefix() {
     continuationToken = response.IsTruncated ? response.NextContinuationToken : undefined;
   } while (continuationToken);
 
+  console.log("[spaces:list] done", { keyCount: keys.length, prefix: prefix || "(root)" });
+
   return keys;
+}
+
+export function getSpacesDebugContext() {
+  const endpoint = process.env.SPACES_ENDPOINT || "(missing)";
+  const bucket = process.env.SPACES_BUCKET || "(missing)";
+  const region = process.env.SPACES_REGION || "(missing)";
+  const prefix = process.env.SPACES_BASE_PREFIX || "all music";
+
+  return {
+    endpoint,
+    bucket,
+    region,
+    prefix,
+    hasKey: Boolean(process.env.SPACES_KEY),
+    hasSecret: Boolean(process.env.SPACES_SECRET),
+    signedUrls: shouldUseSignedUrls()
+  };
 }

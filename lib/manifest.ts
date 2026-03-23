@@ -47,8 +47,10 @@ export async function appendSongToManifest(song: Song) {
 }
 
 export async function syncManifestWithSpaces() {
+  console.log("[manifest:sync] start");
   const songs = await readManifest();
   const keys = await listObjectsInSpacesPrefix();
+  console.log("[manifest:sync] source", { manifestCount: songs.length, objectCount: keys.length });
 
   const imageKeys = new Map<string, string>();
   for (const key of keys) {
@@ -103,6 +105,8 @@ export async function syncManifestWithSpaces() {
   if (added > 0) {
     await writeManifest(nextSongs);
   }
+
+  console.log("[manifest:sync] done", { added, total: nextSongs.length });
 
   return {
     added,
