@@ -2,7 +2,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { appendSongToManifest, ensureManifestExists } from "@/lib/manifest";
-import { uploadToSpaces } from "@/lib/spaces";
+import { buildSpacesObjectKey, uploadToSpaces } from "@/lib/spaces";
 import type { Song } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -44,9 +44,9 @@ export async function POST(request: Request) {
     const id = randomUUID();
     const safeAudioName = sanitizeKeyPart(path.basename(mp3.name || `${id}.mp3`, path.extname(mp3.name || ".mp3")));
     const safeArtName = sanitizeKeyPart(path.basename(artwork.name || `${id}.jpg`, path.extname(artwork.name || ".jpg")));
-    const audioKey = `music/${id}-${safeAudioName}.mp3`;
+    const audioKey = buildSpacesObjectKey(`${id}-${safeAudioName}.mp3`);
     const artworkExt = artwork.type === "image/png" ? "png" : "jpg";
-    const artworkKey = `artwork/${id}-${safeArtName}.${artworkExt}`;
+    const artworkKey = buildSpacesObjectKey(`${id}-${safeArtName}.${artworkExt}`);
 
     const [mp3Buffer, artBuffer] = await Promise.all([mp3.arrayBuffer(), artwork.arrayBuffer()]);
 

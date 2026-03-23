@@ -34,6 +34,18 @@ export function shouldUploadPublicRead() {
   return process.env.SPACES_UPLOAD_PUBLIC_READ === "true";
 }
 
+export function getSpacesBasePrefix() {
+  const raw = process.env.SPACES_BASE_PREFIX?.trim();
+  const prefix = raw && raw.length > 0 ? raw : "all music";
+  return prefix.replace(/^\/+/, "").replace(/\/+$/, "");
+}
+
+export function buildSpacesObjectKey(fileName: string) {
+  const cleanName = fileName.replace(/^\/+/, "");
+  const prefix = getSpacesBasePrefix();
+  return prefix ? `${prefix}/${cleanName}` : cleanName;
+}
+
 export function getSpacesBucket() {
   return getEnv("SPACES_BUCKET");
 }

@@ -46,6 +46,7 @@ Required variables:
 
 Optional variables:
 
+- `SPACES_BASE_PREFIX=all music`
 - `SPACES_USE_SIGNED_URLS=true|false`
 - `SPACES_SIGNED_URL_EXPIRES_SECONDS=900`
 - `SPACES_UPLOAD_PUBLIC_READ=true|false`
