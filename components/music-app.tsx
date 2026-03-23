@@ -52,8 +52,8 @@ export default function MusicApp() {
 
       const normalized = data.map((song) => ({
         ...song,
-        audioUrl: `/music/${song.file}`,
-        artworkUrl: song.artwork ? `/music/${song.artwork}` : null
+        audioUrl: song.audioUrl,
+        artworkUrl: song.artworkUrl ?? null
       }));
 
       setSongs(normalized);
@@ -86,16 +86,14 @@ export default function MusicApp() {
 
     try {
       const response = await fetch("/api/reload", { method: "POST" });
-      const payload = (await response.json()) as { added?: number; updated?: boolean; total?: number };
+      const payload = (await response.json()) as { total?: number };
 
       if (!response.ok) {
         throw new Error("Reload failed");
       }
 
       await fetchSongs();
-      const added = payload.added ?? 0;
-      const updated = payload.updated ? "metadata refreshed" : "no metadata changes";
-      setReloadMessage(`Reloaded: ${added} added, ${updated}.`);
+      setReloadMessage(`Reloaded. Total songs: ${payload.total ?? 0}.`);
     } catch {
       setReloadMessage("Reload failed.");
     } finally {

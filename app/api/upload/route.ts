@@ -1,13 +1,8 @@
-import { promises as fs } from "node:fs";
 import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import {
-  appendSongToManifest,
-  ensureManifestExists,
-  ensureUniqueFileName,
-  getMusicDirPath
-} from "@/lib/manifest";
+import { appendSongToManifest, ensureManifestExists } from "@/lib/manifest";
+import { uploadToSpaces } from "@/lib/spaces";
 import type { Song } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -46,27 +41,37 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "Title, artist, and album are required" }, { status: 400 });
     }
 
-    const musicDir = getMusicDirPath();
-
-    const mp3Name = await ensureUniqueFileName(mp3.name || `${randomUUID()}.mp3`);
-    const artExt = path.extname(artwork.name || "").toLowerCase() || ".jpg";
-    const artBase = path.basename(artwork.name || randomUUID(), artExt);
-    const artName = await ensureUniqueFileName(`${artBase}${artExt}`);
+    const id = randomUUID();
+    const safeAudioName = sanitizeKeyPart(path.basename(mp3.name || `${id}.mp3`, path.extname(mp3.name || ".mp3")));
+    const safeArtName = sanitizeKeyPart(path.basename(artwork.name || `${id}.jpg`, path.extname(artwork.name || ".jpg")));
+    const audioKey = `music/${id}-${safeAudioName}.mp3`;
+    const artworkExt = artwork.type === "image/png" ? "png" : "jpg";
+    const artworkKey = `artwork/${id}-${safeArtName}.${artworkExt}`;
 
     const [mp3Buffer, artBuffer] = await Promise.all([mp3.arrayBuffer(), artwork.arrayBuffer()]);
 
-    await Promise.all([
-      fs.writeFile(path.join(musicDir, mp3Name), Buffer.from(mp3Buffer)),
-      fs.writeFile(path.join(musicDir, artName), Buffer.from(artBuffer))
+    const [audioUrl, artworkUrl] = await Promise.all([
+      uploadToSpaces({
+        key: audioKey,
+        body: new Uint8Array(mp3Buffer),
+        contentType: "audio/mpeg"
+      }),
+      uploadToSpaces({
+        key: artworkKey,
+        body: new Uint8Array(artBuffer),
+        contentType: artwork.type
+      })
     ]);
 
     const song: Song = {
-      id: randomUUID(),
-      file: mp3Name,
+      id,
       title,
       artist,
       album,
-      artwork: artName
+      audioUrl,
+      artworkUrl,
+      audioKey,
+      artworkKey
     };
 
     await appendSongToManifest(song);
@@ -75,4 +80,15 @@ export async function POST(request: Request) {
   } catch {
     return NextResponse.json({ error: "Upload failed" }, { status: 500 });
   }
+}
+
+function sanitizeKeyPart(value: string) {
+  return (
+    value
+      .trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9-_]+/g, "-")
+      .replace(/-{2,}/g, "-")
+      .replace(/^-|-$/g, "") || "file"
+  );
 }

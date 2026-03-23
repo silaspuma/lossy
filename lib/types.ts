@@ -1,8 +1,10 @@
 export type Song = {
   id: string;
-  file: string;
   title: string;
   artist: string;
   album: string;
-  artwork?: string;
+  audioUrl: string;
+  artworkUrl?: string | null;
+  audioKey?: string;
+  artworkKey?: string;
 };
