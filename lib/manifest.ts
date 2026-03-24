@@ -162,7 +162,7 @@ async function syncManifestWithSpacesWithOptions(options: { includeDeepMetadata:
       ? await uploadEmbeddedArtworkForAudio(key, extracted.picture.data, extracted.picture.format)
       : undefined;
     const artworkKey =
-      findArtworkKeyForAudio(key, imageExactKeys, imageDirFallback) || embeddedArtworkKey;
+      embeddedArtworkKey || findArtworkKeyForAudio(key, imageExactKeys, imageDirFallback);
 
     nextSongs.push({
       id: `song-${createHash("sha1").update(key).digest("hex").slice(0, 12)}`,
@@ -186,8 +186,14 @@ async function syncManifestWithSpacesWithOptions(options: { includeDeepMetadata:
         continue;
       }
 
+      const currentArtworkKey = song.artworkKey || getKeyFromUrl(song.artworkUrl);
+
       const needsMetadata =
-        isUnknownText(song.artist) || isUnknownText(song.album) || isUnknownText(song.title) || !song.artworkUrl;
+        isUnknownText(song.artist) ||
+        isUnknownText(song.album) ||
+        isUnknownText(song.title) ||
+        !song.artworkUrl ||
+        !isEmbeddedArtworkKey(currentArtworkKey);
 
       if (!needsMetadata) {
         continue;
@@ -199,15 +205,20 @@ async function syncManifestWithSpacesWithOptions(options: { includeDeepMetadata:
         ? await uploadEmbeddedArtworkForAudio(song.audioKey, extracted.picture.data, extracted.picture.format)
         : undefined;
       const fallbackArtworkKey =
-        findArtworkKeyForAudio(song.audioKey, imageExactKeys, imageDirFallback) || embeddedArtworkKey;
+        embeddedArtworkKey ||
+        currentArtworkKey ||
+        findArtworkKeyForAudio(song.audioKey, imageExactKeys, imageDirFallback);
 
       const nextSong: Song = {
         ...song,
         title: isUnknownText(song.title) ? extracted.title || inferred.title : song.title,
         artist: isUnknownText(song.artist) ? extracted.artist || inferred.artist : song.artist,
         album: isUnknownText(song.album) ? extracted.album || inferred.album : song.album,
-        artworkKey: song.artworkKey || fallbackArtworkKey,
-        artworkUrl: song.artworkUrl || (fallbackArtworkKey ? getObjectUrl(fallbackArtworkKey) : null)
+        artworkKey: fallbackArtworkKey,
+        artworkUrl:
+          fallbackArtworkKey && song.artworkKey !== fallbackArtworkKey
+            ? getObjectUrl(fallbackArtworkKey)
+            : song.artworkUrl || (fallbackArtworkKey ? getObjectUrl(fallbackArtworkKey) : null)
       };
 
       if (
@@ -373,7 +384,19 @@ function imageExtFromFormat(format: string) {
   return undefined;
 }
 
-function getKeyFromUrl(url: string) {
+function isEmbeddedArtworkKey(key: string | undefined) {
+  if (!key) {
+    return false;
+  }
+
+  return path.posix.basename(key).startsWith(".embedded-art-");
+}
+
+function getKeyFromUrl(url: string | null | undefined) {
+  if (!url) {
+    return undefined;
+  }
+
   try {
     const parsed = new URL(url);
     return decodeURIComponent(parsed.pathname.replace(/^\//, ""));
