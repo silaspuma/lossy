@@ -7,13 +7,3 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 .env*
-music/
-*.mp3
-*.flac
-*.m4a
-*.aac
-*.wav
-*.ogg
-*.jpg
-*.jpeg
-*.png
