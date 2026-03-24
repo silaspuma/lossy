@@ -39,7 +39,7 @@ input {
   left: 0;
   right: 0;
   z-index: 10;
-  background: var(--surface);
+  grid-template-columns: auto 1fr;
   border-bottom: 1px solid var(--line);
   padding: 14px 16px;
 }
@@ -53,6 +53,20 @@ input {
   margin: 0 auto;
 }
 
+.transport-controls {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+.transport-button {
+  border: 1px solid #d6d6d6;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+.transport-button:disabled,
 .top-bar input {
   width: 100%;
   display: block;
@@ -299,7 +313,7 @@ input {
   }
 
   .now-playing {
-    grid-template-columns: auto 1fr auto;
+    grid-template-columns: auto 1fr;
   }
 
   .top-controls {

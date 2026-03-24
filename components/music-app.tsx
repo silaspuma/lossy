@@ -222,6 +222,43 @@ export default function MusicApp() {
     }
   }
 
+  function playPrevious() {
+    if (!currentSong || songs.length === 0) {
+      return;
+    }
+
+    const audio = audioRef.current;
+    if (audio && audio.currentTime > 3) {
+      audio.currentTime = 0;
+      setCurrentTime(0);
+      return;
+    }
+
+    const index = songs.findIndex((song) => song.id === currentSong.id);
+    if (index < 0) {
+      return;
+    }
+
+    const previousIndex = index === 0 ? songs.length - 1 : index - 1;
+    setCurrentSongId(songs[previousIndex].id);
+    setIsPlaying(true);
+  }
+
+  function playNext() {
+    if (!currentSong || songs.length === 0) {
+      return;
+    }
+
+    const index = songs.findIndex((song) => song.id === currentSong.id);
+    if (index < 0) {
+      return;
+    }
+
+    const nextIndex = index === songs.length - 1 ? 0 : index + 1;
+    setCurrentSongId(songs[nextIndex].id);
+    setIsPlaying(true);
+  }
+
   function onSeek(value: string) {
     const nextTime = Number(value);
     const audio = audioRef.current;
@@ -330,14 +367,22 @@ export default function MusicApp() {
           <span>{currentSong ? `${currentSong.artist}` : ""}</span>
         </div>
 
-        <button
-          type="button"
-          className="play-toggle"
-          onClick={() => void togglePlayPause()}
-          disabled={!currentSong}
-        >
-          {isPlaying ? "Pause" : "Play"}
-        </button>
+        <div className="transport-controls">
+          <button type="button" className="transport-button" onClick={playPrevious} disabled={!currentSong}>
+            Back
+          </button>
+          <button
+            type="button"
+            className="play-toggle"
+            onClick={() => void togglePlayPause()}
+            disabled={!currentSong}
+          >
+            {isPlaying ? "Pause" : "Play"}
+          </button>
+          <button type="button" className="transport-button" onClick={playNext} disabled={!currentSong}>
+            Next
+          </button>
+        </div>
 
         <div className="progress-wrap">
           <span>{formatTime(currentTime)}</span>
