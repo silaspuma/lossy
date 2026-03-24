@@ -51,6 +51,17 @@ function ReloadIcon() {
   );
 }
 
+function ShuffleIcon() {
+  return (
+    <svg className="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M17 3h4v4h-2V6.41l-3.29 3.3-1.42-1.42L17.59 5H17V3zM3 7h4.5l3.2 3.2-1.4 1.4L6.7 9H3V7zm11.3 5.4 1.4 1.4L19 10.6V12h2V8h-4v2h.59l-3.29 3.29zM3 17h3.7l10.9-10.9-1.4-1.4L5.3 15.6H3v1.4z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) {
     return "0:00";
@@ -72,6 +83,7 @@ export default function MusicApp() {
   const [debouncedQuery, setDebouncedQuery] = useState("");
   const [currentSongId, setCurrentSongId] = useState<string | null>(null);
   const [isPlaying, setIsPlaying] = useState(false);
+  const [shuffleEnabled, setShuffleEnabled] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
   const [duration, setDuration] = useState(0);
   const [brokenArtwork, setBrokenArtwork] = useState<Set<string>>(new Set());
@@ -90,6 +102,7 @@ export default function MusicApp() {
   const [requestError, setRequestError] = useState("");
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const shuffleHistoryRef = useRef<string[]>([]);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -394,6 +407,16 @@ export default function MusicApp() {
       return;
     }
 
+    if (shuffleEnabled) {
+      const history = shuffleHistoryRef.current;
+      const previousSongId = history.pop();
+      if (previousSongId) {
+        setCurrentSongId(previousSongId);
+        setIsPlaying(true);
+      }
+      return;
+    }
+
     const index = songs.findIndex((song) => song.id === currentSong.id);
     if (index < 0) {
       return;
@@ -406,6 +429,25 @@ export default function MusicApp() {
 
   function playNext() {
     if (!currentSong || songs.length === 0) {
+      return;
+    }
+
+    if (shuffleEnabled) {
+      const candidates = songs.filter((song) => song.id !== currentSong.id);
+      const pool = candidates.length > 0 ? candidates : songs;
+      const nextSong = pool[Math.floor(Math.random() * pool.length)];
+
+      if (!nextSong) {
+        return;
+      }
+
+      shuffleHistoryRef.current.push(currentSong.id);
+      if (shuffleHistoryRef.current.length > 100) {
+        shuffleHistoryRef.current.shift();
+      }
+
+      setCurrentSongId(nextSong.id);
+      setIsPlaying(true);
       return;
     }
 
@@ -649,6 +691,24 @@ export default function MusicApp() {
         </div>
 
         <div className="transport-controls">
+          <button
+            type="button"
+            className={`transport-button ${shuffleEnabled ? "active" : ""}`}
+            onClick={() => {
+              setShuffleEnabled((enabled) => {
+                const next = !enabled;
+                if (!next) {
+                  shuffleHistoryRef.current = [];
+                }
+                return next;
+              });
+            }}
+            disabled={!currentSong}
+            aria-label={shuffleEnabled ? "Disable shuffle" : "Enable shuffle"}
+            title={shuffleEnabled ? "Shuffle on" : "Shuffle off"}
+          >
+            <ShuffleIcon />
+          </button>
           <button
             type="button"
             className="transport-button"
