@@ -2,6 +2,7 @@ import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
 import { parseBuffer } from "music-metadata";
+import { fetchCoverArtArchiveImage } from "@/lib/cover-art";
 import type { Song } from "@/lib/types";
 import {
   downloadObjectBytesFromSpaces,
@@ -108,6 +109,8 @@ async function syncManifestWithSpacesWithOptions(options: { includeDeepMetadata:
       .map((value) => value.toLowerCase())
   );
 
+  const coverArtCache = new Map<string, Promise<string | undefined>>();
+
   let added = 0;
   let updated = 0;
   const nextSongs: Song[] = songs.map((song) => {
@@ -161,14 +164,24 @@ async function syncManifestWithSpacesWithOptions(options: { includeDeepMetadata:
     const embeddedArtworkKey = includeDeepMetadata && extracted.picture
       ? await uploadEmbeddedArtworkForAudio(key, extracted.picture.data, extracted.picture.format)
       : undefined;
-    const artworkKey =
-      embeddedArtworkKey || findArtworkKeyForAudio(key, imageExactKeys, imageDirFallback);
+    const diskArtworkKey = findArtworkKeyForAudio(key, imageExactKeys, imageDirFallback);
+    const coverArtArchiveKey =
+      includeDeepMetadata && !embeddedArtworkKey && !diskArtworkKey
+        ? await getCoverArtArchiveKeyForSong({
+            audioKey: key,
+            title: extracted.title || inferred.title,
+            artist: extracted.artist || inferred.artist,
+            album: extracted.album || inferred.album,
+            cache: coverArtCache
+          })
+        : undefined;
+    const artworkKey = embeddedArtworkKey || diskArtworkKey || coverArtArchiveKey;
 
     nextSongs.push({
       id: `song-${createHash("sha1").update(key).digest("hex").slice(0, 12)}`,
-      title: extracted.title || inferred.title,
-      artist: extracted.artist || inferred.artist,
-      album: extracted.album || inferred.album,
+      title: coalesceSongText(extracted.title, inferred.title, "Untitled"),
+      artist: coalesceSongText(extracted.artist, inferred.artist, "Unknown Artist"),
+      album: coalesceSongText(extracted.album, inferred.album, "Unknown Album"),
       audioUrl: getObjectUrl(key),
       artworkUrl: artworkKey ? getObjectUrl(artworkKey) : null,
       audioKey: key,
@@ -204,16 +217,30 @@ async function syncManifestWithSpacesWithOptions(options: { includeDeepMetadata:
       const embeddedArtworkKey = extracted.picture
         ? await uploadEmbeddedArtworkForAudio(song.audioKey, extracted.picture.data, extracted.picture.format)
         : undefined;
-      const fallbackArtworkKey =
-        embeddedArtworkKey ||
-        currentArtworkKey ||
-        findArtworkKeyForAudio(song.audioKey, imageExactKeys, imageDirFallback);
+      const diskArtworkKey = findArtworkKeyForAudio(song.audioKey, imageExactKeys, imageDirFallback);
+      const coverArtArchiveKey =
+        !embeddedArtworkKey && !currentArtworkKey && !diskArtworkKey
+          ? await getCoverArtArchiveKeyForSong({
+              audioKey: song.audioKey,
+              title: extracted.title || inferred.title,
+              artist: extracted.artist || inferred.artist,
+              album: extracted.album || inferred.album,
+              cache: coverArtCache
+            })
+          : undefined;
+      const fallbackArtworkKey = embeddedArtworkKey || currentArtworkKey || diskArtworkKey || coverArtArchiveKey;
 
       const nextSong: Song = {
         ...song,
-        title: isUnknownText(song.title) ? extracted.title || inferred.title : song.title,
-        artist: isUnknownText(song.artist) ? extracted.artist || inferred.artist : song.artist,
-        album: isUnknownText(song.album) ? extracted.album || inferred.album : song.album,
+        title: isUnknownText(song.title)
+          ? coalesceSongText(extracted.title, inferred.title, "Untitled")
+          : coalesceSongText(song.title, "Untitled"),
+        artist: isUnknownText(song.artist)
+          ? coalesceSongText(extracted.artist, inferred.artist, "Unknown Artist")
+          : coalesceSongText(song.artist, "Unknown Artist"),
+        album: isUnknownText(song.album)
+          ? coalesceSongText(extracted.album, inferred.album, "Unknown Album")
+          : coalesceSongText(song.album, "Unknown Album"),
         artworkKey: fallbackArtworkKey,
         artworkUrl:
           fallbackArtworkKey && song.artworkKey !== fallbackArtworkKey
@@ -340,6 +367,17 @@ function cleanText(value: string | undefined) {
   return clean.length > 0 ? clean : undefined;
 }
 
+function coalesceSongText(...values: Array<string | undefined>) {
+  for (const value of values) {
+    const clean = cleanText(value);
+    if (clean) {
+      return clean;
+    }
+  }
+
+  return "";
+}
+
 function mimeTypeFromExt(ext: string) {
   switch (ext.toLowerCase()) {
     case ".m4a":
@@ -371,6 +409,62 @@ async function uploadEmbeddedArtworkForAudio(audioKey: string, data: Uint8Array,
 
   await uploadToSpaces({ key, body: data, contentType });
   return key;
+}
+
+async function uploadCoverArtArchiveForAudio(audioKey: string, bytes: Uint8Array, contentType: string, releaseGroupId: string) {
+  const ext = contentType === "image/png" ? ".png" : ".jpg";
+  const id = createHash("sha1").update(`${audioKey}|${releaseGroupId}`).digest("hex").slice(0, 12);
+  const key = `${path.posix.dirname(audioKey)}/.cover-art-archive-${id}${ext}`;
+
+  await uploadToSpaces({ key, body: bytes, contentType });
+  return key;
+}
+
+async function getCoverArtArchiveKeyForSong(input: {
+  audioKey: string;
+  title: string;
+  artist: string;
+  album: string;
+  cache: Map<string, Promise<string | undefined>>;
+}) {
+  const cacheKey = `${input.artist}|${input.album}|${input.title}`.toLowerCase();
+  const cached = input.cache.get(cacheKey);
+  if (cached) {
+    return cached;
+  }
+
+  const promise = (async () => {
+    try {
+      const cover = await fetchCoverArtArchiveImage({
+        artist: input.artist,
+        album: input.album,
+        title: input.title
+      });
+
+      if (!cover) {
+        return undefined;
+      }
+
+      return await uploadCoverArtArchiveForAudio(
+        input.audioKey,
+        cover.bytes,
+        cover.contentType,
+        cover.releaseGroupId
+      );
+    } catch (error) {
+      console.warn("[manifest:sync] cover art archive fallback failed", {
+        audioKey: input.audioKey,
+        artist: input.artist,
+        album: input.album,
+        title: input.title,
+        error
+      });
+      return undefined;
+    }
+  })();
+
+  input.cache.set(cacheKey, promise);
+  return promise;
 }
 
 function imageExtFromFormat(format: string) {

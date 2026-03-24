@@ -2,6 +2,7 @@ import path from "node:path";
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { parseBuffer } from "music-metadata";
+import { fetchCoverArtArchiveImage } from "@/lib/cover-art";
 import { appendSongToManifest, ensureManifestExists } from "@/lib/manifest";
 import { buildSpacesObjectKey, uploadToSpaces } from "@/lib/spaces";
 import type { Song } from "@/lib/types";
@@ -48,14 +49,23 @@ export async function POST(request: Request) {
     const extracted = await extractAudioMetadata(audioBuffer, audioExt);
     const inferred = inferFromFileName(audio.name);
 
-    const resolvedTitle = title || extracted.title || inferred.title;
-    const resolvedArtist = artist || extracted.artist || inferred.artist;
-    const resolvedAlbum = album || extracted.album || inferred.album;
+    const resolvedTitle = coalesceText(title, extracted.title, inferred.title, "Untitled");
+    const resolvedArtist = coalesceText(artist, extracted.artist, inferred.artist, "Unknown Artist");
+    const resolvedAlbum = coalesceText(album, extracted.album, inferred.album, "Unknown Album");
+
+    const coverArtFallback = !isFile(artwork) && !extracted.picture
+      ? await fetchCoverArtArchiveImage({
+          artist: resolvedArtist,
+          album: resolvedAlbum,
+          title: resolvedTitle
+        })
+      : undefined;
 
     const uploadedArtwork = await resolveArtworkUpload({
       id,
       artwork,
-      extractedPicture: extracted.picture
+      extractedPicture: extracted.picture,
+      coverArtArchive: coverArtFallback
     });
 
     const [audioUrl] = await Promise.all([
@@ -168,10 +178,22 @@ function cleanText(value: string | undefined) {
   return clean.length > 0 ? clean : undefined;
 }
 
+function coalesceText(...values: Array<string | undefined>) {
+  for (const value of values) {
+    const clean = cleanText(value);
+    if (clean) {
+      return clean;
+    }
+  }
+
+  return "";
+}
+
 async function resolveArtworkUpload(input: {
   id: string;
   artwork: FormDataEntryValue | null;
   extractedPicture: { data: Uint8Array; format?: string } | undefined;
+  coverArtArchive?: { bytes: Uint8Array; contentType: string; releaseGroupId: string };
 }) {
   if (isFile(input.artwork)) {
     const artworkExt = input.artwork.type === "image/png" ? "png" : "jpg";
@@ -199,6 +221,17 @@ async function resolveArtworkUpload(input: {
       key,
       body: input.extractedPicture.data,
       contentType
+    });
+    return { key, url };
+  }
+
+  if (input.coverArtArchive) {
+    const ext = input.coverArtArchive.contentType === "image/png" ? ".png" : ".jpg";
+    const key = buildSpacesObjectKey(`${input.id}-cover-art-archive-${input.coverArtArchive.releaseGroupId}${ext}`);
+    const url = await uploadToSpaces({
+      key,
+      body: input.coverArtArchive.bytes,
+      contentType: input.coverArtArchive.contentType
     });
     return { key, url };
   }
