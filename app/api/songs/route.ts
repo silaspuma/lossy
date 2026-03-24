@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readManifest, syncManifestWithSpaces } from "@/lib/manifest";
+import { readManifest, syncManifestWithSpaces, syncManifestWithSpacesLite } from "@/lib/manifest";
 import { getPlaybackUrl, getSpacesDebugContext } from "@/lib/spaces";
 
 export const runtime = "nodejs";
@@ -9,7 +9,13 @@ export async function GET() {
     console.log("[api:songs] request", getSpacesDebugContext());
 
     const songs = await readManifest();
-    let sourceSongs = songs.length === 0 ? (await syncManifestWithSpaces()).songs : songs;
+    let sourceSongs = songs.length === 0 ? (await syncManifestWithSpacesLite()).songs : songs;
+
+    if (songs.length === 0) {
+      void syncManifestWithSpaces().catch((error) => {
+        console.warn("[api:songs] background deep sync failed", { error });
+      });
+    }
 
     if (shouldRefreshArtworkFromEmbedded(sourceSongs)) {
       console.log("[api:songs] refreshing artwork from embedded metadata", {

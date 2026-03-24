@@ -1,6 +1,8 @@
 const MUSICBRAINZ_BASE = "https://musicbrainz.org/ws/2/release-group/";
 const COVER_ART_ARCHIVE_BASE = "https://coverartarchive.org/release-group";
 const USER_AGENT = "lossy-cover-fallback/1.0 (self-hosted)";
+const MUSICBRAINZ_TIMEOUT_MS = 2500;
+const COVER_ART_TIMEOUT_MS = 3000;
 
 type ReleaseGroupSearchPayload = {
   "release-groups"?: Array<{ id?: string }>;
@@ -25,12 +27,12 @@ export async function fetchCoverArtArchiveImage(input: {
   }
 
   const coverUrl = `${COVER_ART_ARCHIVE_BASE}/${encodeURIComponent(releaseGroupId)}/front`;
-  const response = await fetch(coverUrl, {
+  const response = await fetchWithTimeout(coverUrl, COVER_ART_TIMEOUT_MS, {
     headers: { "User-Agent": USER_AGENT },
     cache: "no-store"
   });
 
-  if (!response.ok) {
+  if (!response || !response.ok) {
     return undefined;
   }
 
@@ -56,12 +58,12 @@ async function findReleaseGroupId(input: { artist: string; album?: string; title
 
   for (const query of queries) {
     const url = `${MUSICBRAINZ_BASE}?query=${encodeURIComponent(query)}&fmt=json&limit=1`;
-    const response = await fetch(url, {
+    const response = await fetchWithTimeout(url, MUSICBRAINZ_TIMEOUT_MS, {
       headers: { "User-Agent": USER_AGENT },
       cache: "no-store"
     });
 
-    if (!response.ok) {
+    if (!response || !response.ok) {
       continue;
     }
 
@@ -116,4 +118,20 @@ function cleanSearchText(value: string | null | undefined) {
   }
 
   return trimmed;
+}
+
+async function fetchWithTimeout(url: string, timeoutMs: number, init: RequestInit) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    return await fetch(url, {
+      ...init,
+      signal: controller.signal
+    });
+  } catch {
+    return undefined;
+  } finally {
+    clearTimeout(timer);
+  }
 }
