@@ -153,6 +153,43 @@ export async function listObjectsInSpacesPrefix() {
   return keys;
 }
 
+export async function downloadObjectBytesFromSpaces(key: string) {
+  const client = getSpacesClient();
+  const response = await client.send(
+    new GetObjectCommand({
+      Bucket: getSpacesBucket(),
+      Key: key
+    })
+  );
+
+  if (!response.Body) {
+    throw new Error(`Missing object body for key: ${key}`);
+  }
+
+  const body = response.Body as {
+    transformToByteArray?: () => Promise<Uint8Array>;
+    [Symbol.asyncIterator]?: () => AsyncIterator<Uint8Array | Buffer | string>;
+  };
+
+  if (typeof body.transformToByteArray === "function") {
+    return await body.transformToByteArray();
+  }
+
+  if (body[Symbol.asyncIterator]) {
+    const chunks: Buffer[] = [];
+    for await (const chunk of body as AsyncIterable<Uint8Array | Buffer | string>) {
+      if (typeof chunk === "string") {
+        chunks.push(Buffer.from(chunk));
+      } else {
+        chunks.push(Buffer.from(chunk));
+      }
+    }
+    return new Uint8Array(Buffer.concat(chunks));
+  }
+
+  throw new Error(`Unsupported response body type for key: ${key}`);
+}
+
 export function getSpacesDebugContext() {
   const endpoint = process.env.SPACES_ENDPOINT || "(missing)";
   const bucket = process.env.SPACES_BUCKET || "(missing)";

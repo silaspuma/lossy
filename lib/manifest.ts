@@ -1,8 +1,15 @@
 import { promises as fs } from "node:fs";
 import path from "node:path";
 import { createHash } from "node:crypto";
+import { parseBuffer } from "music-metadata";
 import type { Song } from "@/lib/types";
-import { getObjectUrl, getSpacesBasePrefix, listObjectsInSpacesPrefix } from "@/lib/spaces";
+import {
+  downloadObjectBytesFromSpaces,
+  getObjectUrl,
+  getSpacesBasePrefix,
+  listObjectsInSpacesPrefix,
+  uploadToSpaces
+} from "@/lib/spaces";
 
 const BUNDLED_MANIFEST_PATH = path.join(process.cwd(), "manifest.json");
 const MANIFEST_PATH = process.env.VERCEL ? "/tmp/manifest.json" : BUNDLED_MANIFEST_PATH;
@@ -139,13 +146,18 @@ export async function syncManifestWithSpaces() {
     }
 
     const inferred = inferFromAudioKey(key);
-    const artworkKey = findArtworkKeyForAudio(key, imageExactKeys, imageDirFallback);
+    const extracted = await extractAudioMetadataFromSpaces(key);
+    const embeddedArtworkKey = extracted.picture
+      ? await uploadEmbeddedArtworkForAudio(key, extracted.picture.data, extracted.picture.format)
+      : undefined;
+    const artworkKey =
+      findArtworkKeyForAudio(key, imageExactKeys, imageDirFallback) || embeddedArtworkKey;
 
     nextSongs.push({
       id: `song-${createHash("sha1").update(key).digest("hex").slice(0, 12)}`,
-      title: inferred.title,
-      artist: inferred.artist,
-      album: inferred.album,
+      title: extracted.title || inferred.title,
+      artist: extracted.artist || inferred.artist,
+      album: extracted.album || inferred.album,
       audioUrl: getObjectUrl(key),
       artworkUrl: artworkKey ? getObjectUrl(artworkKey) : null,
       audioKey: key,
@@ -154,6 +166,48 @@ export async function syncManifestWithSpaces() {
 
     existingAudioKeys.add(key.toLowerCase());
     added += 1;
+  }
+
+  for (let i = 0; i < nextSongs.length; i += 1) {
+    const song = nextSongs[i];
+    if (!song.audioKey) {
+      continue;
+    }
+
+    const needsMetadata =
+      isUnknownText(song.artist) || isUnknownText(song.album) || isUnknownText(song.title) || !song.artworkUrl;
+
+    if (!needsMetadata) {
+      continue;
+    }
+
+    const inferred = inferFromAudioKey(song.audioKey);
+    const extracted = await extractAudioMetadataFromSpaces(song.audioKey);
+    const embeddedArtworkKey = extracted.picture
+      ? await uploadEmbeddedArtworkForAudio(song.audioKey, extracted.picture.data, extracted.picture.format)
+      : undefined;
+    const fallbackArtworkKey =
+      findArtworkKeyForAudio(song.audioKey, imageExactKeys, imageDirFallback) || embeddedArtworkKey;
+
+    const nextSong: Song = {
+      ...song,
+      title: isUnknownText(song.title) ? extracted.title || inferred.title : song.title,
+      artist: isUnknownText(song.artist) ? extracted.artist || inferred.artist : song.artist,
+      album: isUnknownText(song.album) ? extracted.album || inferred.album : song.album,
+      artworkKey: song.artworkKey || fallbackArtworkKey,
+      artworkUrl: song.artworkUrl || (fallbackArtworkKey ? getObjectUrl(fallbackArtworkKey) : null)
+    };
+
+    if (
+      nextSong.title !== song.title ||
+      nextSong.artist !== song.artist ||
+      nextSong.album !== song.album ||
+      nextSong.artworkKey !== song.artworkKey ||
+      nextSong.artworkUrl !== song.artworkUrl
+    ) {
+      nextSongs[i] = nextSong;
+      updated += 1;
+    }
   }
 
   if (added > 0 || updated > 0) {
@@ -222,7 +276,88 @@ function isUnknownText(value: string | null | undefined) {
   }
 
   const normalized = value.trim().toLowerCase();
-  return normalized.length === 0 || normalized === "unknown artist" || normalized === "unknown album";
+  return (
+    normalized.length === 0 ||
+    normalized === "unknown artist" ||
+    normalized === "unknown album" ||
+    normalized === "untitled"
+  );
+}
+
+async function extractAudioMetadataFromSpaces(audioKey: string) {
+  try {
+    const bytes = await downloadObjectBytesFromSpaces(audioKey);
+    const metadata = await parseBuffer(Buffer.from(bytes), {
+      mimeType: mimeTypeFromExt(path.posix.extname(audioKey))
+    });
+
+    return {
+      title: cleanText(metadata.common.title),
+      artist: cleanText(metadata.common.artist || metadata.common.artists?.[0]),
+      album: cleanText(metadata.common.album),
+      picture: metadata.common.picture?.[0]
+    };
+  } catch (error) {
+    console.warn("[manifest:sync] metadata read failed", { audioKey, error });
+    return {
+      title: undefined,
+      artist: undefined,
+      album: undefined,
+      picture: undefined
+    };
+  }
+}
+
+function cleanText(value: string | undefined) {
+  if (!value) {
+    return undefined;
+  }
+  const clean = value.trim();
+  return clean.length > 0 ? clean : undefined;
+}
+
+function mimeTypeFromExt(ext: string) {
+  switch (ext.toLowerCase()) {
+    case ".m4a":
+      return "audio/mp4";
+    case ".mp3":
+      return "audio/mpeg";
+    case ".flac":
+      return "audio/flac";
+    case ".aac":
+      return "audio/aac";
+    case ".wav":
+      return "audio/wav";
+    case ".ogg":
+      return "audio/ogg";
+    default:
+      return "application/octet-stream";
+  }
+}
+
+async function uploadEmbeddedArtworkForAudio(audioKey: string, data: Uint8Array, format: string) {
+  const ext = imageExtFromFormat(format);
+  if (!ext) {
+    return undefined;
+  }
+
+  const id = createHash("sha1").update(audioKey).digest("hex").slice(0, 12);
+  const key = `${path.posix.dirname(audioKey)}/.embedded-art-${id}${ext}`;
+  const contentType = ext === ".png" ? "image/png" : "image/jpeg";
+
+  await uploadToSpaces({ key, body: data, contentType });
+  return key;
+}
+
+function imageExtFromFormat(format: string) {
+  const value = format.toLowerCase();
+  if (value.includes("png")) {
+    return ".png";
+  }
+  if (value.includes("jpeg") || value.includes("jpg")) {
+    return ".jpg";
+  }
+  return undefined;
 }
 
 function getKeyFromUrl(url: string) {

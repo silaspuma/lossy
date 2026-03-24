@@ -8,6 +8,38 @@ type SongWithUrls = Song & {
   artworkUrl: string | null;
 };
 
+function PlayIcon() {
+  return (
+    <svg className="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M8 5v14l11-7z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function PauseIcon() {
+  return (
+    <svg className="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M7 5h4v14H7zM13 5h4v14h-4z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function PreviousIcon() {
+  return (
+    <svg className="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 5h2v14H6zM9 12l9 7V5z" fill="currentColor" />
+    </svg>
+  );
+}
+
+function NextIcon() {
+  return (
+    <svg className="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M16 5h2v14h-2zM6 5v14l9-7z" fill="currentColor" />
+    </svg>
+  );
+}
+
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) {
     return "0:00";
@@ -368,19 +400,35 @@ export default function MusicApp() {
         </div>
 
         <div className="transport-controls">
-          <button type="button" className="transport-button" onClick={playPrevious} disabled={!currentSong}>
-            Back
+          <button
+            type="button"
+            className="transport-button"
+            onClick={playPrevious}
+            disabled={!currentSong}
+            aria-label="Previous"
+            title="Previous"
+          >
+            <PreviousIcon />
           </button>
           <button
             type="button"
             className="play-toggle"
             onClick={() => void togglePlayPause()}
             disabled={!currentSong}
+            aria-label={isPlaying ? "Pause" : "Play"}
+            title={isPlaying ? "Pause" : "Play"}
           >
-            {isPlaying ? "Pause" : "Play"}
+            {isPlaying ? <PauseIcon /> : <PlayIcon />}
           </button>
-          <button type="button" className="transport-button" onClick={playNext} disabled={!currentSong}>
-            Next
+          <button
+            type="button"
+            className="transport-button"
+            onClick={playNext}
+            disabled={!currentSong}
+            aria-label="Next"
+            title="Next"
+          >
+            <NextIcon />
           </button>
         </div>
 
