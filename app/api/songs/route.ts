@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { readManifest, syncManifestWithSpaces } from "@/lib/manifest";
+import { readManifest, syncManifestWithSpacesLite } from "@/lib/manifest";
 import { getPlaybackUrl, getSpacesDebugContext } from "@/lib/spaces";
 
 export const runtime = "nodejs";
@@ -9,7 +9,7 @@ export async function GET() {
     console.log("[api:songs] request", getSpacesDebugContext());
 
     const songs = await readManifest();
-    const sourceSongs = songs.length === 0 ? (await syncManifestWithSpaces()).songs : songs;
+    const sourceSongs = songs.length === 0 ? (await syncManifestWithSpacesLite()).songs : songs;
     const hydrated = await Promise.all(
       sourceSongs.map(async (song) => ({
         ...song,

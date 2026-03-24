@@ -67,6 +67,15 @@ export async function appendSongToManifest(song: Song) {
 }
 
 export async function syncManifestWithSpaces() {
+  return syncManifestWithSpacesWithOptions({ includeDeepMetadata: true });
+}
+
+export async function syncManifestWithSpacesLite() {
+  return syncManifestWithSpacesWithOptions({ includeDeepMetadata: false });
+}
+
+async function syncManifestWithSpacesWithOptions(options: { includeDeepMetadata: boolean }) {
+  const { includeDeepMetadata } = options;
   console.log("[manifest:sync] start");
   const songs = await readManifest();
   const keys = await listObjectsInSpacesPrefix();
@@ -146,8 +155,10 @@ export async function syncManifestWithSpaces() {
     }
 
     const inferred = inferFromAudioKey(key);
-    const extracted = await extractAudioMetadataFromSpaces(key);
-    const embeddedArtworkKey = extracted.picture
+    const extracted = includeDeepMetadata
+      ? await extractAudioMetadataFromSpaces(key)
+      : { title: undefined, artist: undefined, album: undefined, picture: undefined };
+    const embeddedArtworkKey = includeDeepMetadata && extracted.picture
       ? await uploadEmbeddedArtworkForAudio(key, extracted.picture.data, extracted.picture.format)
       : undefined;
     const artworkKey =
@@ -168,45 +179,47 @@ export async function syncManifestWithSpaces() {
     added += 1;
   }
 
-  for (let i = 0; i < nextSongs.length; i += 1) {
-    const song = nextSongs[i];
-    if (!song.audioKey) {
-      continue;
-    }
+  if (includeDeepMetadata) {
+    for (let i = 0; i < nextSongs.length; i += 1) {
+      const song = nextSongs[i];
+      if (!song.audioKey) {
+        continue;
+      }
 
-    const needsMetadata =
-      isUnknownText(song.artist) || isUnknownText(song.album) || isUnknownText(song.title) || !song.artworkUrl;
+      const needsMetadata =
+        isUnknownText(song.artist) || isUnknownText(song.album) || isUnknownText(song.title) || !song.artworkUrl;
 
-    if (!needsMetadata) {
-      continue;
-    }
+      if (!needsMetadata) {
+        continue;
+      }
 
-    const inferred = inferFromAudioKey(song.audioKey);
-    const extracted = await extractAudioMetadataFromSpaces(song.audioKey);
-    const embeddedArtworkKey = extracted.picture
-      ? await uploadEmbeddedArtworkForAudio(song.audioKey, extracted.picture.data, extracted.picture.format)
-      : undefined;
-    const fallbackArtworkKey =
-      findArtworkKeyForAudio(song.audioKey, imageExactKeys, imageDirFallback) || embeddedArtworkKey;
+      const inferred = inferFromAudioKey(song.audioKey);
+      const extracted = await extractAudioMetadataFromSpaces(song.audioKey);
+      const embeddedArtworkKey = extracted.picture
+        ? await uploadEmbeddedArtworkForAudio(song.audioKey, extracted.picture.data, extracted.picture.format)
+        : undefined;
+      const fallbackArtworkKey =
+        findArtworkKeyForAudio(song.audioKey, imageExactKeys, imageDirFallback) || embeddedArtworkKey;
 
-    const nextSong: Song = {
-      ...song,
-      title: isUnknownText(song.title) ? extracted.title || inferred.title : song.title,
-      artist: isUnknownText(song.artist) ? extracted.artist || inferred.artist : song.artist,
-      album: isUnknownText(song.album) ? extracted.album || inferred.album : song.album,
-      artworkKey: song.artworkKey || fallbackArtworkKey,
-      artworkUrl: song.artworkUrl || (fallbackArtworkKey ? getObjectUrl(fallbackArtworkKey) : null)
-    };
+      const nextSong: Song = {
+        ...song,
+        title: isUnknownText(song.title) ? extracted.title || inferred.title : song.title,
+        artist: isUnknownText(song.artist) ? extracted.artist || inferred.artist : song.artist,
+        album: isUnknownText(song.album) ? extracted.album || inferred.album : song.album,
+        artworkKey: song.artworkKey || fallbackArtworkKey,
+        artworkUrl: song.artworkUrl || (fallbackArtworkKey ? getObjectUrl(fallbackArtworkKey) : null)
+      };
 
-    if (
-      nextSong.title !== song.title ||
-      nextSong.artist !== song.artist ||
-      nextSong.album !== song.album ||
-      nextSong.artworkKey !== song.artworkKey ||
-      nextSong.artworkUrl !== song.artworkUrl
-    ) {
-      nextSongs[i] = nextSong;
-      updated += 1;
+      if (
+        nextSong.title !== song.title ||
+        nextSong.artist !== song.artist ||
+        nextSong.album !== song.album ||
+        nextSong.artworkKey !== song.artworkKey ||
+        nextSong.artworkUrl !== song.artworkUrl
+      ) {
+        nextSongs[i] = nextSong;
+        updated += 1;
+      }
     }
   }
 

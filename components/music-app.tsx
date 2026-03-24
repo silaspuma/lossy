@@ -76,6 +76,7 @@ export default function MusicApp() {
   const [brokenArtwork, setBrokenArtwork] = useState<Set<string>>(new Set());
   const [reloadPending, setReloadPending] = useState(false);
   const [reloadMessage, setReloadMessage] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [requestModalOpen, setRequestModalOpen] = useState(false);
   const [requestQuery, setRequestQuery] = useState("");
   const [requestResults, setRequestResults] = useState<AlbumSearchResult[]>([]);
@@ -130,8 +131,12 @@ export default function MusicApp() {
 
   const fetchSongs = useCallback(async () => {
     setLoading(true);
+    setLoadError("");
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15000);
+
     try {
-      const response = await fetch("/api/songs", { cache: "no-store" });
+      const response = await fetch("/api/songs", { cache: "no-store", signal: controller.signal });
       const payload = (await response.json()) as Song[] | { error?: string };
 
       if (!response.ok) {
@@ -162,9 +167,17 @@ export default function MusicApp() {
       }
     } catch (error) {
       console.error("[client:songs] error", error);
+      if (error instanceof Error && error.name === "AbortError") {
+        setLoadError("Loading timed out. Check Spaces connection and try Reload.");
+      } else if (error instanceof Error && error.message) {
+        setLoadError(error.message);
+      } else {
+        setLoadError("Failed to load songs.");
+      }
       setSongs([]);
       setCurrentSongId(null);
     } finally {
+      window.clearTimeout(timeout);
       setLoading(false);
     }
   }, []);
@@ -484,7 +497,9 @@ export default function MusicApp() {
       <section className="song-list" aria-live="polite">
         {loading ? <p className="info-text">Loading songs...</p> : null}
 
-        {!loading && filteredSongs.length === 0 ? <p className="info-text">No songs found.</p> : null}
+        {!loading && loadError ? <p className="status error">{loadError}</p> : null}
+
+        {!loading && !loadError && filteredSongs.length === 0 ? <p className="info-text">No songs found.</p> : null}
 
         {!loading
           ? filteredSongs.map((song) => {
