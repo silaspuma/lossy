@@ -200,8 +200,10 @@ async function syncManifestWithSpacesWithOptions(options: { includeDeepMetadata:
       }
 
       const currentArtworkKey = song.artworkKey || getKeyFromUrl(song.artworkUrl);
+      const shouldPreferEmbeddedMetadata = isM4aAudioKey(song.audioKey);
 
       const needsMetadata =
+        shouldPreferEmbeddedMetadata ||
         isUnknownText(song.artist) ||
         isUnknownText(song.album) ||
         isUnknownText(song.title) ||
@@ -232,15 +234,21 @@ async function syncManifestWithSpacesWithOptions(options: { includeDeepMetadata:
 
       const nextSong: Song = {
         ...song,
-        title: isUnknownText(song.title)
-          ? coalesceSongText(extracted.title, inferred.title, "Untitled")
-          : coalesceSongText(song.title, "Untitled"),
-        artist: isUnknownText(song.artist)
-          ? coalesceSongText(extracted.artist, inferred.artist, "Unknown Artist")
-          : coalesceSongText(song.artist, "Unknown Artist"),
-        album: isUnknownText(song.album)
-          ? coalesceSongText(extracted.album, inferred.album, "Unknown Album")
-          : coalesceSongText(song.album, "Unknown Album"),
+        title: shouldPreferEmbeddedMetadata
+          ? coalesceSongText(extracted.title, song.title, inferred.title, "Untitled")
+          : isUnknownText(song.title)
+            ? coalesceSongText(extracted.title, inferred.title, "Untitled")
+            : coalesceSongText(song.title, "Untitled"),
+        artist: shouldPreferEmbeddedMetadata
+          ? coalesceSongText(extracted.artist, song.artist, inferred.artist, "Unknown Artist")
+          : isUnknownText(song.artist)
+            ? coalesceSongText(extracted.artist, inferred.artist, "Unknown Artist")
+            : coalesceSongText(song.artist, "Unknown Artist"),
+        album: shouldPreferEmbeddedMetadata
+          ? coalesceSongText(extracted.album, song.album, inferred.album, "Unknown Album")
+          : isUnknownText(song.album)
+            ? coalesceSongText(extracted.album, inferred.album, "Unknown Album")
+            : coalesceSongText(song.album, "Unknown Album"),
         artworkKey: fallbackArtworkKey,
         artworkUrl:
           fallbackArtworkKey && song.artworkKey !== fallbackArtworkKey
@@ -395,6 +403,10 @@ function mimeTypeFromExt(ext: string) {
     default:
       return "application/octet-stream";
   }
+}
+
+function isM4aAudioKey(audioKey: string) {
+  return path.posix.extname(audioKey).toLowerCase() === ".m4a";
 }
 
 async function uploadEmbeddedArtworkForAudio(audioKey: string, data: Uint8Array, format: string) {

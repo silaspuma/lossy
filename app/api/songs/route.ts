@@ -1,26 +1,18 @@
 import { NextResponse } from "next/server";
-import { readManifest, syncManifestWithSpaces, syncManifestWithSpacesLite } from "@/lib/manifest";
+import { readManifest, syncManifestWithSpaces } from "@/lib/manifest";
 import { getPlaybackUrl, getSpacesDebugContext } from "@/lib/spaces";
 
 export const runtime = "nodejs";
-const DEEP_SYNC_TIMEOUT_MS = 7000;
 
 export async function GET() {
   try {
     console.log("[api:songs] request", getSpacesDebugContext());
 
     const songs = await readManifest();
-    let sourceSongs = songs.length === 0 ? (await syncManifestWithSpacesLite()).songs : songs;
+    let sourceSongs = songs;
 
     if (songs.length === 0 || shouldPromoteToDeepSync(sourceSongs)) {
-      const deepSynced = await withTimeout(syncManifestWithSpaces(), DEEP_SYNC_TIMEOUT_MS);
-      if (deepSynced) {
-        sourceSongs = deepSynced.songs;
-      } else {
-        void syncManifestWithSpaces().catch((error) => {
-          console.warn("[api:songs] background deep sync failed", { error });
-        });
-      }
+      sourceSongs = (await syncManifestWithSpaces()).songs;
     }
 
     if (shouldRefreshArtworkFromEmbedded(sourceSongs)) {
@@ -77,23 +69,6 @@ function isUnknownText(value: string | null | undefined) {
 
   const normalized = value.trim().toLowerCase();
   return normalized.length === 0 || normalized === "unknown artist" || normalized === "unknown album" || normalized === "untitled";
-}
-
-async function withTimeout<T>(promise: Promise<T>, timeoutMs: number) {
-  let timer: ReturnType<typeof setTimeout> | undefined;
-
-  try {
-    return await Promise.race<T | undefined>([
-      promise,
-      new Promise<undefined>((resolve) => {
-        timer = setTimeout(() => resolve(undefined), timeoutMs);
-      })
-    ]);
-  } finally {
-    if (timer) {
-      clearTimeout(timer);
-    }
-  }
 }
 
 function shouldRefreshArtworkFromEmbedded(
