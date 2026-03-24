@@ -8,3 +8,21 @@ export type Song = {
   audioKey?: string;
   artworkKey?: string;
 };
+
+export type AlbumSearchResult = {
+  id: string;
+  title: string;
+  artist: string;
+  year?: string;
+};
+
+export type AlbumRequest = {
+  id: string;
+  albumId: string;
+  title: string;
+  artist: string;
+  year?: string;
+  status: "pending" | "completed";
+  createdAt: string;
+  completedAt?: string;
+};

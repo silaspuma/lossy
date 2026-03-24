@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { Song } from "@/lib/types";
+import type { AlbumSearchResult, Song } from "@/lib/types";
 
 type SongWithUrls = Song & {
   audioUrl: string;
@@ -40,6 +40,17 @@ function NextIcon() {
   );
 }
 
+function ReloadIcon() {
+  return (
+    <svg className="control-icon" viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M12 5a7 7 0 1 0 6.32 10h-2.2A5 5 0 1 1 12 7c1.3 0 2.48.5 3.37 1.31L13 11h7V4l-2.1 2.1A8.94 8.94 0 0 0 12 5z"
+        fill="currentColor"
+      />
+    </svg>
+  );
+}
+
 function formatTime(seconds: number) {
   if (!Number.isFinite(seconds) || seconds < 0) {
     return "0:00";
@@ -65,6 +76,13 @@ export default function MusicApp() {
   const [brokenArtwork, setBrokenArtwork] = useState<Set<string>>(new Set());
   const [reloadPending, setReloadPending] = useState(false);
   const [reloadMessage, setReloadMessage] = useState("");
+  const [requestModalOpen, setRequestModalOpen] = useState(false);
+  const [requestQuery, setRequestQuery] = useState("");
+  const [requestResults, setRequestResults] = useState<AlbumSearchResult[]>([]);
+  const [selectedRequests, setSelectedRequests] = useState<AlbumSearchResult[]>([]);
+  const [requestLoading, setRequestLoading] = useState(false);
+  const [requestSubmitting, setRequestSubmitting] = useState(false);
+  const [requestError, setRequestError] = useState("");
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -75,6 +93,40 @@ export default function MusicApp() {
 
     return () => window.clearTimeout(timer);
   }, [query]);
+
+  useEffect(() => {
+    if (!requestModalOpen) {
+      return;
+    }
+
+    const trimmed = requestQuery.trim();
+    if (trimmed.length < 2) {
+      setRequestResults([]);
+      return;
+    }
+
+    const timer = window.setTimeout(async () => {
+      setRequestLoading(true);
+      try {
+        const response = await fetch(`/api/musicbrainz/search-albums?q=${encodeURIComponent(trimmed)}`);
+        const payload = (await response.json()) as { albums?: AlbumSearchResult[]; error?: string };
+
+        if (!response.ok) {
+          throw new Error(payload.error || "Search failed");
+        }
+
+        setRequestResults(payload.albums || []);
+        setRequestError("");
+      } catch (error) {
+        setRequestResults([]);
+        setRequestError(error instanceof Error ? error.message : "Search failed");
+      } finally {
+        setRequestLoading(false);
+      }
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [requestModalOpen, requestQuery]);
 
   const fetchSongs = useCallback(async () => {
     setLoading(true);
@@ -142,6 +194,51 @@ export default function MusicApp() {
       setReloadMessage("Reload failed.");
     } finally {
       setReloadPending(false);
+    }
+  }
+
+  function toggleRequestedAlbum(album: AlbumSearchResult) {
+    setSelectedRequests((current) => {
+      const exists = current.some((item) => item.id === album.id);
+      if (exists) {
+        return current.filter((item) => item.id !== album.id);
+      }
+
+      if (current.length >= 3) {
+        return current;
+      }
+
+      return [...current, album];
+    });
+  }
+
+  async function submitRequests() {
+    if (selectedRequests.length === 0) {
+      setRequestError("Select at least one album.");
+      return;
+    }
+
+    setRequestSubmitting(true);
+    setRequestError("");
+
+    try {
+      const response = await fetch("/api/requests", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ albums: selectedRequests.slice(0, 3) })
+      });
+
+      const payload = (await response.json()) as { error?: string };
+
+      if (!response.ok) {
+        throw new Error(payload.error || "Failed to create request");
+      }
+
+      window.location.href = "/requests";
+    } catch (error) {
+      setRequestError(error instanceof Error ? error.message : "Failed to create request");
+    } finally {
+      setRequestSubmitting(false);
     }
   }
 
@@ -309,6 +406,17 @@ export default function MusicApp() {
 
       <header className="top-bar">
         <div className="top-controls">
+          <button
+            type="button"
+            className="reload-icon-button"
+            onClick={() => void reloadLibrary()}
+            disabled={reloadPending}
+            aria-label="Reload library"
+            title="Reload library"
+          >
+            <ReloadIcon />
+          </button>
+
           <input
             type="search"
             placeholder="Search by title, artist, or album"
@@ -316,12 +424,62 @@ export default function MusicApp() {
             onChange={(event) => setQuery(event.target.value)}
             aria-label="Search songs"
           />
-          <button type="button" className="reload-button" onClick={() => void reloadLibrary()} disabled={reloadPending}>
-            {reloadPending ? "Reloading..." : "Reload"}
+
+          <button type="button" className="request-button" onClick={() => setRequestModalOpen(true)}>
+            Request
           </button>
         </div>
         {reloadMessage ? <p className="top-status">{reloadMessage}</p> : null}
       </header>
+
+      {requestModalOpen ? (
+        <div className="modal-overlay" onClick={() => setRequestModalOpen(false)}>
+          <div className="request-modal" onClick={(event) => event.stopPropagation()}>
+            <h2>Request Albums</h2>
+            <p>Please enter the album(s) you want to request.</p>
+
+            <input
+              type="search"
+              placeholder="Search albums"
+              value={requestQuery}
+              onChange={(event) => setRequestQuery(event.target.value)}
+            />
+
+            <div className="request-selected">Selected: {selectedRequests.length}/3</div>
+
+            {requestLoading ? <p className="info-text">Searching...</p> : null}
+            {requestError ? <p className="status error">{requestError}</p> : null}
+
+            <div className="request-results">
+              {requestResults.map((album) => {
+                const selected = selectedRequests.some((item) => item.id === album.id);
+                return (
+                  <button
+                    type="button"
+                    key={album.id}
+                    className={`request-result ${selected ? "selected" : ""}`}
+                    onClick={() => toggleRequestedAlbum(album)}
+                    disabled={!selected && selectedRequests.length >= 3}
+                  >
+                    <strong>{album.title}</strong>
+                    <span>{album.artist}</span>
+                    <small>{album.year || ""}</small>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="request-modal-actions">
+              <button type="button" onClick={() => setRequestModalOpen(false)}>
+                Cancel
+              </button>
+              <button type="button" onClick={() => void submitRequests()} disabled={requestSubmitting}>
+                {requestSubmitting ? "Submitting..." : "Submit Request"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <section className="song-list" aria-live="polite">
         {loading ? <p className="info-text">Loading songs...</p> : null}
@@ -356,7 +514,7 @@ export default function MusicApp() {
                     />
                   ) : (
                     <div className="song-art-fallback" aria-hidden="true">
-                      No Art
+                      Cover
                     </div>
                   )}
 
@@ -389,7 +547,7 @@ export default function MusicApp() {
             />
           ) : (
             <div className="song-art-fallback now-art-fallback" aria-hidden="true">
-              No Art
+              Cover
             </div>
           )}
         </div>
