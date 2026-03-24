@@ -301,6 +301,21 @@ export default function MusicApp() {
     return songs.find((song) => song.id === currentSongId) ?? null;
   }, [songs, currentSongId]);
 
+  const mediaSessionArtwork = useMemo(() => {
+    if (!currentSong?.artworkUrl || brokenArtwork.has(currentSong.id)) {
+      return undefined;
+    }
+
+    return [
+      { src: currentSong.artworkUrl, sizes: "96x96", type: "image/jpeg" },
+      { src: currentSong.artworkUrl, sizes: "128x128", type: "image/jpeg" },
+      { src: currentSong.artworkUrl, sizes: "192x192", type: "image/jpeg" },
+      { src: currentSong.artworkUrl, sizes: "256x256", type: "image/jpeg" },
+      { src: currentSong.artworkUrl, sizes: "384x384", type: "image/jpeg" },
+      { src: currentSong.artworkUrl, sizes: "512x512", type: "image/jpeg" }
+    ];
+  }, [currentSong, brokenArtwork]);
+
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio) {
@@ -340,6 +355,61 @@ export default function MusicApp() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [currentSong]);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) {
+      return;
+    }
+
+    if (!currentSong) {
+      navigator.mediaSession.metadata = null;
+      navigator.mediaSession.playbackState = "none";
+      return;
+    }
+
+    navigator.mediaSession.metadata = new MediaMetadata({
+      title: currentSong.title,
+      artist: currentSong.artist,
+      album: currentSong.album,
+      artwork: mediaSessionArtwork
+    });
+
+    navigator.mediaSession.playbackState = isPlaying ? "playing" : "paused";
+  }, [currentSong, isPlaying, mediaSessionArtwork]);
+
+  useEffect(() => {
+    if (typeof navigator === "undefined" || !("mediaSession" in navigator)) {
+      return;
+    }
+
+    const safeSetActionHandler = (action: MediaSessionAction, handler: MediaSessionActionHandler | null) => {
+      try {
+        navigator.mediaSession.setActionHandler(action, handler);
+      } catch {
+        // Some browsers throw for unsupported actions.
+      }
+    };
+
+    safeSetActionHandler("play", () => {
+      void togglePlayPause();
+    });
+    safeSetActionHandler("pause", () => {
+      void togglePlayPause();
+    });
+    safeSetActionHandler("previoustrack", () => {
+      playPrevious();
+    });
+    safeSetActionHandler("nexttrack", () => {
+      playNext();
+    });
+
+    return () => {
+      safeSetActionHandler("play", null);
+      safeSetActionHandler("pause", null);
+      safeSetActionHandler("previoustrack", null);
+      safeSetActionHandler("nexttrack", null);
+    };
+  }, [currentSongId, isPlaying, songs, shuffleEnabled]);
 
   useEffect(() => {
     const audio = audioRef.current;
