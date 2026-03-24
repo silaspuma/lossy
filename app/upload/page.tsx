@@ -54,28 +54,28 @@ export default function UploadPage() {
         <h1>Upload Song</h1>
 
         <label>
-          MP3 File
-          <input name="mp3" type="file" accept="audio/mpeg,.mp3" required />
+          Audio File (.mp3 or .m4a)
+          <input name="audio" type="file" accept="audio/mpeg,audio/mp4,.mp3,.m4a" required />
         </label>
 
         <label>
-          Artwork (JPG/PNG)
-          <input name="artwork" type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png" required />
+          Artwork (Optional JPG/PNG)
+          <input name="artwork" type="file" accept="image/jpeg,image/png,.jpg,.jpeg,.png" />
         </label>
 
         <label>
-          Title
-          <input name="title" type="text" required />
+          Title (Optional override)
+          <input name="title" type="text" />
         </label>
 
         <label>
-          Artist
-          <input name="artist" type="text" required />
+          Artist (Optional override)
+          <input name="artist" type="text" />
         </label>
 
         <label>
-          Album
-          <input name="album" type="text" required />
+          Album (Optional override)
+          <input name="album" type="text" />
         </label>
 
         <button type="submit" disabled={state.loading}>
