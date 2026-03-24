@@ -80,7 +80,10 @@ export default function MusicApp() {
   const [requestModalOpen, setRequestModalOpen] = useState(false);
   const [requestQuery, setRequestQuery] = useState("");
   const [requestResults, setRequestResults] = useState<AlbumSearchResult[]>([]);
+  const [requestPage, setRequestPage] = useState(0);
+  const [requestHasMore, setRequestHasMore] = useState(false);
   const [selectedRequests, setSelectedRequests] = useState<AlbumSearchResult[]>([]);
+  const [brokenRequestCovers, setBrokenRequestCovers] = useState<Set<string>>(new Set());
   const [requestLoading, setRequestLoading] = useState(false);
   const [requestSubmitting, setRequestSubmitting] = useState(false);
   const [requestError, setRequestError] = useState("");
@@ -96,6 +99,11 @@ export default function MusicApp() {
   }, [query]);
 
   useEffect(() => {
+    setRequestPage(0);
+    setBrokenRequestCovers(new Set());
+  }, [requestQuery]);
+
+  useEffect(() => {
     if (!requestModalOpen) {
       return;
     }
@@ -103,23 +111,32 @@ export default function MusicApp() {
     const trimmed = requestQuery.trim();
     if (trimmed.length < 2) {
       setRequestResults([]);
+      setRequestHasMore(false);
       return;
     }
 
     const timer = window.setTimeout(async () => {
       setRequestLoading(true);
       try {
-        const response = await fetch(`/api/musicbrainz/search-albums?q=${encodeURIComponent(trimmed)}`);
-        const payload = (await response.json()) as { albums?: AlbumSearchResult[]; error?: string };
+        const response = await fetch(
+          `/api/musicbrainz/search-albums?q=${encodeURIComponent(trimmed)}&page=${requestPage}`
+        );
+        const payload = (await response.json()) as {
+          albums?: AlbumSearchResult[];
+          hasMore?: boolean;
+          error?: string;
+        };
 
         if (!response.ok) {
           throw new Error(payload.error || "Search failed");
         }
 
         setRequestResults(payload.albums || []);
+        setRequestHasMore(Boolean(payload.hasMore));
         setRequestError("");
       } catch (error) {
         setRequestResults([]);
+        setRequestHasMore(false);
         setRequestError(error instanceof Error ? error.message : "Search failed");
       } finally {
         setRequestLoading(false);
@@ -127,7 +144,7 @@ export default function MusicApp() {
     }, 250);
 
     return () => window.clearTimeout(timer);
-  }, [requestModalOpen, requestQuery]);
+  }, [requestModalOpen, requestQuery, requestPage]);
 
   const fetchSongs = useCallback(async () => {
     setLoading(true);
@@ -474,12 +491,54 @@ export default function MusicApp() {
                     onClick={() => toggleRequestedAlbum(album)}
                     disabled={!selected && selectedRequests.length >= 3}
                   >
-                    <strong>{album.title}</strong>
-                    <span>{album.artist}</span>
+                    {album.coverUrl && !brokenRequestCovers.has(album.id) ? (
+                      <img
+                        src={album.coverUrl}
+                        alt={album.title}
+                        className="request-result-cover"
+                        loading="lazy"
+                        onError={(event) => {
+                          event.currentTarget.onerror = null;
+                          setBrokenRequestCovers((prev) => {
+                            const next = new Set(prev);
+                            next.add(album.id);
+                            return next;
+                          });
+                        }}
+                      />
+                    ) : (
+                      <div className="request-result-cover-fallback" aria-hidden="true">
+                        No Art
+                      </div>
+                    )}
+
+                    <div className="request-result-meta">
+                      <strong>{album.title}</strong>
+                      <span>{album.artist}</span>
+                    </div>
+
                     <small>{album.year || ""}</small>
                   </button>
                 );
               })}
+            </div>
+
+            <div className="request-pagination">
+              <button
+                type="button"
+                onClick={() => setRequestPage((page) => Math.max(0, page - 1))}
+                disabled={requestLoading || requestPage === 0}
+              >
+                Previous 3
+              </button>
+              <span>Page {requestPage + 1}</span>
+              <button
+                type="button"
+                onClick={() => setRequestPage((page) => page + 1)}
+                disabled={requestLoading || !requestHasMore}
+              >
+                Next 3
+              </button>
             </div>
 
             <div className="request-modal-actions">

@@ -14,6 +14,7 @@ export type AlbumSearchResult = {
   title: string;
   artist: string;
   year?: string;
+  coverUrl?: string | null;
 };
 
 export type AlbumRequest = {

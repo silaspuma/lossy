@@ -337,8 +337,45 @@ input {
   padding: 10px;
   text-align: left;
   display: grid;
-  gap: 2px;
+  grid-template-columns: 56px 1fr auto;
+  align-items: center;
+  gap: 10px;
   cursor: pointer;
+}
+
+.request-result-cover {
+  width: 56px;
+  height: 56px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: #f4f4f4;
+}
+
+.request-result-cover-fallback {
+  width: 56px;
+  height: 56px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  border: 1px dashed var(--line);
+  color: var(--muted);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.request-result-meta {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.request-result-meta strong,
+.request-result-meta span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .request-result.selected {
@@ -354,6 +391,31 @@ input {
 .request-result span,
 .request-result small {
   color: var(--muted);
+}
+
+.request-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.request-pagination span {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.request-pagination button {
+  border: 1px solid #d6d6d6;
+  border-radius: 8px;
+  background: #fff;
+  padding: 8px 10px;
+  cursor: pointer;
+}
+
+.request-pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .request-modal-actions {

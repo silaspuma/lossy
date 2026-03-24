@@ -6,13 +6,17 @@ export const runtime = "nodejs";
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const q = (searchParams.get("q") || "").trim();
+  const pageRaw = Number(searchParams.get("page") || "0");
+  const page = Number.isFinite(pageRaw) && pageRaw > 0 ? Math.floor(pageRaw) : 0;
+  const limit = 3;
+  const offset = page * limit;
 
   if (q.length < 2) {
-    return NextResponse.json({ albums: [] });
+    return NextResponse.json({ albums: [], hasMore: false });
   }
 
   const query = `releasegroup:${q} AND primarytype:album`;
-  const url = `https://musicbrainz.org/ws/2/release-group/?query=${encodeURIComponent(query)}&fmt=json&limit=20`;
+  const url = `https://musicbrainz.org/ws/2/release-group/?query=${encodeURIComponent(query)}&fmt=json&limit=${limit}&offset=${offset}`;
 
   try {
     const response = await fetch(url, {
@@ -23,10 +27,11 @@ export async function GET(request: Request) {
     });
 
     if (!response.ok) {
-      return NextResponse.json({ error: "MusicBrainz search failed", albums: [] }, { status: 502 });
+      return NextResponse.json({ error: "MusicBrainz search failed", albums: [], hasMore: false }, { status: 502 });
     }
 
     const payload = (await response.json()) as {
+      count?: number;
       "release-groups"?: Array<{
         id: string;
         title: string;
@@ -39,11 +44,15 @@ export async function GET(request: Request) {
       id: group.id,
       title: group.title,
       artist: group["artist-credit"]?.[0]?.name || "Unknown Artist",
-      year: group["first-release-date"]?.slice(0, 4)
+      year: group["first-release-date"]?.slice(0, 4),
+      coverUrl: `https://coverartarchive.org/release-group/${group.id}/front-250`
     }));
 
-    return NextResponse.json({ albums });
+    const totalCount = payload.count || 0;
+    const hasMore = offset + albums.length < totalCount;
+
+    return NextResponse.json({ albums, hasMore });
   } catch {
-    return NextResponse.json({ error: "MusicBrainz search failed", albums: [] }, { status: 500 });
+    return NextResponse.json({ error: "MusicBrainz search failed", albums: [], hasMore: false }, { status: 500 });
   }
 }
