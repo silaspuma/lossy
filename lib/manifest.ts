@@ -4,7 +4,8 @@ import { createHash } from "node:crypto";
 import type { Song } from "@/lib/types";
 import { getObjectUrl, listObjectsInSpacesPrefix } from "@/lib/spaces";
 
-const MANIFEST_PATH = path.join(process.cwd(), "manifest.json");
+const BUNDLED_MANIFEST_PATH = path.join(process.cwd(), "manifest.json");
+const MANIFEST_PATH = process.env.VERCEL ? "/tmp/manifest.json" : BUNDLED_MANIFEST_PATH;
 const AUDIO_EXTENSIONS = new Set([".mp3", ".flac", ".m4a", ".aac", ".wav", ".ogg"]);
 const IMAGE_EXTENSIONS = new Set([".jpg", ".jpeg", ".png"]);
 
@@ -16,6 +17,17 @@ export async function ensureManifestExists() {
   try {
     await fs.access(MANIFEST_PATH);
   } catch {
+    if (MANIFEST_PATH !== BUNDLED_MANIFEST_PATH) {
+      try {
+        const bundled = await fs.readFile(BUNDLED_MANIFEST_PATH, "utf8");
+        await fs.writeFile(MANIFEST_PATH, bundled, "utf8");
+        return;
+      } catch {
+        await fs.writeFile(MANIFEST_PATH, "[]\n", "utf8");
+        return;
+      }
+    }
+
     await fs.writeFile(MANIFEST_PATH, "[]\n", "utf8");
   }
 }
