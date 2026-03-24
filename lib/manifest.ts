@@ -200,7 +200,17 @@ async function syncManifestWithSpacesWithOptions(options: { includeDeepMetadata:
       }
 
       const currentArtworkKey = song.artworkKey || getKeyFromUrl(song.artworkUrl);
-      const shouldPreferEmbeddedMetadata = isM4aAudioKey(song.audioKey);
+      const inferred = inferFromAudioKey(song.audioKey);
+      const shouldPreferEmbeddedMetadata =
+        isM4aAudioKey(song.audioKey) &&
+        (isUnknownText(song.artist) ||
+          isUnknownText(song.album) ||
+          isUnknownText(song.title) ||
+          !song.artworkUrl ||
+          !isEmbeddedArtworkKey(currentArtworkKey) ||
+          isLikelyInferredValue(song.title, inferred.title) ||
+          isLikelyInferredValue(song.artist, inferred.artist) ||
+          isLikelyInferredValue(song.album, inferred.album));
 
       const needsMetadata =
         shouldPreferEmbeddedMetadata ||
@@ -214,7 +224,6 @@ async function syncManifestWithSpacesWithOptions(options: { includeDeepMetadata:
         continue;
       }
 
-      const inferred = inferFromAudioKey(song.audioKey);
       const extracted = await extractAudioMetadataFromSpaces(song.audioKey);
       const embeddedArtworkKey = extracted.picture
         ? await uploadEmbeddedArtworkForAudio(song.audioKey, extracted.picture.data, extracted.picture.format)
@@ -341,6 +350,14 @@ function isUnknownText(value: string | null | undefined) {
     normalized === "unknown album" ||
     normalized === "untitled"
   );
+}
+
+function isLikelyInferredValue(value: string | null | undefined, inferred: string) {
+  if (!value) {
+    return false;
+  }
+
+  return value.trim().toLowerCase() === inferred.trim().toLowerCase();
 }
 
 async function extractAudioMetadataFromSpaces(audioKey: string) {

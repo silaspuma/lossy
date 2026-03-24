@@ -52,14 +52,7 @@ function shouldPromoteToDeepSync(
     (song) => isUnknownText(song.title) || isUnknownText(song.artist) || isUnknownText(song.album)
   ).length;
 
-  const artworkKeys = new Set(
-    songs
-      .map((song) => song.artworkKey || getKeyFromUrl(song.artworkUrl))
-      .filter((key): key is string => Boolean(key))
-  );
-
-  // If most songs are unknown or all songs point to one cover, do deep metadata/art extraction.
-  return unknownCount > 0 || (songs.length >= 2 && artworkKeys.size === 1);
+  return unknownCount > 0;
 }
 
 function isUnknownText(value: string | null | undefined) {
