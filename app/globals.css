@@ -103,6 +103,10 @@ input {
   cursor: not-allowed;
 }
 
+.reload-icon-button.loading .control-icon {
+  animation: spin 0.9s linear infinite;
+}
+
 .request-button {
   border: 1px solid #d6d6d6;
   border-radius: 8px;
@@ -145,6 +149,48 @@ input {
 .song-item.active {
   border-color: #c7c7c7;
   background: #fcfcfc;
+}
+
+.song-item-skeleton {
+  cursor: default;
+}
+
+.song-item-skeleton .song-meta {
+  gap: 7px;
+}
+
+.skeleton-block,
+.skeleton-line {
+  position: relative;
+  overflow: hidden;
+  background: #ececec;
+}
+
+.skeleton-block::after,
+.skeleton-line::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-100%);
+  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.7), transparent);
+  animation: shimmer 1.25s ease-in-out infinite;
+}
+
+.skeleton-line {
+  height: 10px;
+  border-radius: 999px;
+}
+
+.skeleton-line-title {
+  width: 72%;
+}
+
+.skeleton-line-artist {
+  width: 56%;
+}
+
+.skeleton-line-album {
+  width: 40%;
 }
 
 .song-art,
@@ -588,6 +634,18 @@ input {
 
 .status.error {
   color: #9b2222;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes shimmer {
+  100% {
+    transform: translateX(100%);
+  }
 }
 
 @media (max-width: 640px) {

@@ -65,6 +65,7 @@ function formatTime(seconds: number) {
 }
 
 export default function MusicApp() {
+  const loadingSkeletonCount = 7;
   const [songs, setSongs] = useState<SongWithUrls[]>([]);
   const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState("");
@@ -438,7 +439,7 @@ export default function MusicApp() {
         <div className="top-controls">
           <button
             type="button"
-            className="reload-icon-button"
+            className={`reload-icon-button ${reloadPending ? "loading" : ""}`}
             onClick={() => void reloadLibrary()}
             disabled={reloadPending}
             aria-label="Reload library"
@@ -459,7 +460,8 @@ export default function MusicApp() {
             Request
           </button>
         </div>
-        {reloadMessage ? <p className="top-status">{reloadMessage}</p> : null}
+        {reloadPending ? <p className="top-status">Reloading library...</p> : null}
+        {!reloadPending && reloadMessage ? <p className="top-status">{reloadMessage}</p> : null}
       </header>
 
       {requestModalOpen ? (
@@ -554,7 +556,22 @@ export default function MusicApp() {
       ) : null}
 
       <section className="song-list" aria-live="polite">
-        {loading ? <p className="info-text">Loading songs...</p> : null}
+        {loading
+          ? Array.from({ length: loadingSkeletonCount }).map((_, index) => (
+              <div
+                key={`song-skeleton-${index}`}
+                className="song-item song-item-skeleton"
+                aria-hidden="true"
+              >
+                <div className="song-art skeleton-block" />
+                <div className="song-meta">
+                  <div className="skeleton-line skeleton-line-title" />
+                  <div className="skeleton-line skeleton-line-artist" />
+                  <div className="skeleton-line skeleton-line-album" />
+                </div>
+              </div>
+            ))
+          : null}
 
         {!loading && loadError ? <p className="status error">{loadError}</p> : null}
 
