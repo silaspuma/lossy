@@ -529,7 +529,7 @@ export default function MusicApp() {
                 onClick={() => setRequestPage((page) => Math.max(0, page - 1))}
                 disabled={requestLoading || requestPage === 0}
               >
-                Previous 3
+                Previous
               </button>
               <span>Page {requestPage + 1}</span>
               <button
@@ -537,7 +537,7 @@ export default function MusicApp() {
                 onClick={() => setRequestPage((page) => page + 1)}
                 disabled={requestLoading || !requestHasMore}
               >
-                Next 3
+                Next
               </button>
             </div>
 
